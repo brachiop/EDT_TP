@@ -10,6 +10,7 @@
         .creneau.disponible { background: #d4edda; border-color: #c3e6cb; }
         .creneau.selected { background: #cce5ff; border-color: #b8daff; }
         .creneau.occupe { background: #f8d7da; border-color: #f5c6cb; opacity: 0.6; }
+        .loading { opacity: 0.6; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -85,8 +86,8 @@
                                 <label for="salle" class="form-label">Salle:</label>
                                 <input type="text" id="salle" class="form-control" placeholder="Numéro de salle" required>
                             </div>
-                            <button class="btn btn-success" onclick="ajouterTP()">
-                                <i class="fas fa-plus"></i> Planifier ce TP
+                            <button class="btn btn-success" onclick="ajouterTP()" id="btn-ajouter-tp">
+                                ✅ Planifier ce TP
                             </button>
                         </div>
                     </div>
@@ -115,33 +116,60 @@
     $('#section').change(function() {
         const sectionId = $(this).val();
         if(sectionId) {
-            $('#groupe_td').prop('disabled', true).html('<option value="">Chargement...</option>');
+            // Afficher loading
+            $('#groupe_td').prop('disabled', true).addClass('loading').html('<option value="">Chargement...</option>');
             
-            $.get('<?php echo base_url(); ?>edt/get_groupes_td?section_id=' + sectionId, function(groupes) {
-                $('#groupe_td').html('<option value="">Sélectionnez un groupe TD</option>');
-                groupes.forEach(g => $('#groupe_td').append(`<option value="${g.id}">${g.nom}</option>`));
-                $('#groupe_td').prop('disabled', false);
-                $('#groupe_tp').prop('disabled', true).html('<option value="">Sélectionnez d\'abord un groupe TD</option>');
-                reinitialiserAffichages();
-            }).fail(function() {
-                $('#groupe_td').html('<option value="">Erreur de chargement</option>');
+            $.ajax({
+                url: '<?php echo base_url(); ?>edt/get_groupes_td?section_id=' + sectionId,
+                dataType: 'json',
+                success: function(groupes) {
+                    $('#groupe_td').html('<option value="">Sélectionnez un groupe TD</option>');
+                    groupes.forEach(g => {
+                        $('#groupe_td').append(`<option value="${g.id}">${g.nom}</option>`);
+                    });
+                    $('#groupe_td').prop('disabled', false).removeClass('loading');
+                    $('#groupe_tp').prop('disabled', true).html('<option value="">Sélectionnez d\'abord un groupe TD</option>');
+                    reinitialiserAffichages();
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erreur chargement groupes TD:', error);
+                    $('#groupe_td').html('<option value="">Erreur de chargement</option>').removeClass('loading');
+                    alert('Erreur lors du chargement des groupes TD');
+                }
             });
+        } else {
+            $('#groupe_td').prop('disabled', true).html('<option value="">Sélectionnez d\'abord une section</option>');
+            $('#groupe_tp').prop('disabled', true).html('<option value="">Sélectionnez d\'abord un groupe TD</option>');
+            reinitialiserAffichages();
         }
     });
 
     $('#groupe_td').change(function() {
         const groupeTdId = $(this).val();
         if(groupeTdId) {
-            $('#groupe_tp').prop('disabled', true).html('<option value="">Chargement...</option>');
+            // Afficher loading
+            $('#groupe_tp').prop('disabled', true).addClass('loading').html('<option value="">Chargement...</option>');
             
-            $.get('<?php echo base_url(); ?>edt/get_groupes_tp?groupe_td_id=' + groupeTdId, function(groupes) {
-                $('#groupe_tp').html('<option value="">Sélectionnez un groupe TP</option>');
-                groupes.forEach(g => $('#groupe_tp').append(`<option value="${g.id}">${g.nom}</option>`));
-                $('#groupe_tp').prop('disabled', false);
-                reinitialiserAffichages();
-            }).fail(function() {
-                $('#groupe_tp').html('<option value="">Erreur de chargement</option>');
+            $.ajax({
+                url: '<?php echo base_url(); ?>edt/get_groupes_tp?groupe_td_id=' + groupeTdId,
+                dataType: 'json',
+                success: function(groupes) {
+                    $('#groupe_tp').html('<option value="">Sélectionnez un groupe TP</option>');
+                    groupes.forEach(g => {
+                        $('#groupe_tp').append(`<option value="${g.id}">${g.nom}</option>`);
+                    });
+                    $('#groupe_tp').prop('disabled', false).removeClass('loading');
+                    reinitialiserAffichages();
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erreur chargement groupes TP:', error);
+                    $('#groupe_tp').html('<option value="">Erreur de chargement</option>').removeClass('loading');
+                    alert('Erreur lors du chargement des groupes TP');
+                }
             });
+        } else {
+            $('#groupe_tp').prop('disabled', true).html('<option value="">Sélectionnez d\'abord un groupe TD</option>');
+            reinitialiserAffichages();
         }
     });
 
@@ -152,10 +180,12 @@
             const nomGroupe = $('#groupe_tp option:selected').text();
             $('#nom-groupe').text(' - ' + nomGroupe);
             
-            // Charger l'EDT
-            chargerEDT(groupeTpId);
+            // Afficher loading
+            $('#liste-creneaux').html('<div class="text-center"><div class="spinner-border" role="status"></div><br>Chargement...</div>');
+            $('#affichage-edt').html('<div class="text-center"><div class="spinner-border" role="status"></div><br>Chargement...</div>');
             
-            // Charger les créneaux disponibles
+            // Charger l'EDT et les créneaux
+            chargerEDT(groupeTpId);
             chargerCreneauxDisponibles(groupeTpId);
         } else {
             reinitialiserAffichages();
@@ -167,10 +197,12 @@
             url: '<?php echo base_url(); ?>edt/get_edt_groupe?groupe_tp_id=' + groupeTpId,
             dataType: 'json',
             success: function(edt) {
+                console.log('EDT chargé:', edt);
                 $('#debug-edt').text(edt.length + ' cours planifiés');
                 afficherEDT(edt);
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('Erreur chargement EDT:', error);
                 $('#debug-edt').text('Erreur de chargement');
                 $('#affichage-edt').html('<div class="alert alert-danger">Erreur lors du chargement de l\'EDT</div>');
             }
@@ -182,10 +214,12 @@
             url: '<?php echo base_url(); ?>edt/get_creneaux_disponibles?groupe_tp_id=' + groupeTpId,
             dataType: 'json',
             success: function(creneaux) {
+                console.log('Créneaux disponibles chargés:', creneaux);
                 $('#debug-creneaux').text(creneaux.length + ' créneaux disponibles');
                 afficherCreneaux(creneaux);
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('Erreur chargement créneaux:', error);
                 $('#debug-creneaux').text('Erreur de chargement');
                 $('#liste-creneaux').html('<div class="alert alert-danger">Erreur lors du chargement des créneaux</div>');
             }
@@ -194,15 +228,24 @@
 
     function afficherEDT(edt) {
         if (!Array.isArray(edt)) {
-            $('#affichage-edt').html('<div class="alert alert-danger">Erreur: données invalides</div>');
+            $('#affichage-edt').html('<div class="alert alert-danger">Erreur: format de données invalide</div>');
             return;
         }
 
-        let html = '<table class="table table-striped"><thead><tr><th>Jour</th><th>Heure</th><th>Type</th><th>Matière</th><th>Salle</th></tr></thead><tbody>';
+        let html = '<table class="table table-striped table-sm"><thead><tr><th>Jour</th><th>Heure</th><th>Type</th><th>Matière</th><th>Salle</th></tr></thead><tbody>';
         
         if (edt.length === 0) {
             html += '<tr><td colspan="5" class="text-center text-muted">Aucun cours planifié</td></tr>';
         } else {
+            // Trier par jour et heure
+            edt.sort((a, b) => {
+                const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+                const jourA = jours.indexOf(a.jour);
+                const jourB = jours.indexOf(b.jour);
+                if (jourA !== jourB) return jourA - jourB;
+                return a.heure_debut.localeCompare(b.heure_debut);
+            });
+            
             edt.forEach(function(cours) {
                 const badgeClass = cours.type === 'TD' ? 'bg-success' : cours.type === 'TP' ? 'bg-warning' : 'bg-primary';
                 // Formater l'heure (enlever les secondes si présentes)
@@ -225,21 +268,30 @@
 
     function afficherCreneaux(creneaux) {
         if (!Array.isArray(creneaux)) {
-            $('#liste-creneaux').html('<div class="alert alert-danger">Erreur: données invalides</div>');
+            $('#liste-creneaux').html('<div class="alert alert-danger">Erreur: format de données invalide</div>');
             return;
         }
 
         $('#liste-creneaux').empty();
         
         if (creneaux.length === 0) {
-            $('#liste-creneaux').html('<div class="alert alert-warning">Aucun créneau disponible</div>');
+            $('#liste-creneaux').html('<div class="alert alert-warning">Aucun créneau disponible pour ce groupe</div>');
             return;
         }
         
+        // Trier par jour et heure
+        creneaux.sort((a, b) => {
+            const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+            const jourA = jours.indexOf(a.jour);
+            const jourB = jours.indexOf(b.jour);
+            if (jourA !== jourB) return jourA - jourB;
+            return a.heure_debut.localeCompare(b.heure_debut);
+        });
+        
         creneaux.forEach(function(creneau) {
             // Formater l'heure (enlever les secondes)
-            const heure_debut = creneau.heure_debut.length > 5 ? creneau.heure_debut.substring(0, 5) : creneau.heure_debut;
-            const heure_fin = creneau.heure_fin.length > 5 ? creneau.heure_fin.substring(0, 5) : creneau.heure_fin;
+            const heure_debut = creneau.heure_debut.substring(0, 5);
+            const heure_fin = creneau.heure_fin.substring(0, 5);
             
             $('#liste-creneaux').append(`
                 <div class="creneau disponible">
@@ -258,6 +310,7 @@
         $('.creneau').removeClass('selected');
         $(element).parent().addClass('selected');
         $('#form-ajout-tp').show();
+        console.log('Créneau sélectionné:', creneauId);
     }
 
     function ajouterTP() {
@@ -270,7 +323,7 @@
         }
 
         // Désactiver le bouton pendant l'ajout
-        $('button').prop('disabled', true);
+        $('#btn-ajouter-tp').prop('disabled', true).text('Ajout en cours...');
         
         $.ajax({
             url: '<?php echo base_url(); ?>edt/planifier_tp',
@@ -284,7 +337,7 @@
             dataType: 'json',
             success: function(response) {
                 if(response.success) {
-                    alert(response.message);
+                    alert('✅ ' + response.message);
                     // Recharger les données
                     chargerEDT(groupeTpSelectionne);
                     chargerCreneauxDisponibles(groupeTpSelectionne);
@@ -295,14 +348,15 @@
                     $('.creneau').removeClass('selected');
                     creneauSelectionne = null;
                 } else {
-                    alert('Erreur: ' + response.message);
+                    alert('❌ Erreur: ' + response.message);
                 }
             },
-            error: function() {
-                alert('Erreur lors de l\'ajout du TP');
+            error: function(xhr, status, error) {
+                console.error('Erreur ajout TP:', error);
+                alert('❌ Erreur lors de l\'ajout du TP');
             },
             complete: function() {
-                $('button').prop('disabled', false);
+                $('#btn-ajouter-tp').prop('disabled', false).text('✅ Planifier ce TP');
             }
         });
     }
@@ -316,6 +370,16 @@
         $('#nom-groupe').text('');
         creneauSelectionne = null;
     }
+
+    // Debug: afficher les erreurs dans la console
+    $(document).ajaxError(function(event, xhr, settings, error) {
+        console.error('Erreur AJAX:', {
+            url: settings.url,
+            error: error,
+            status: xhr.status,
+            responseText: xhr.responseText
+        });
+    });
     </script>
 </body>
 </html>
