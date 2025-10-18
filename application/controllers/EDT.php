@@ -1,145 +1,280 @@
 <?php
 class EDT extends CI_Controller {
+    
     public function __construct() {
         parent::__construct();
         $this->load->model('EDT_model');
-        $this->load->model('Section_model');
         $this->load->helper('url');
-        $this->load->database();
+        $this->load->library('session');
     }
-
+    
+    // Page principale
     public function index() {
-        $data['sections'] = $this->Section_model->get_all_sections();
+        $data['sections'] = $this->EDT_model->get_sections();
         $this->load->view('edt/planification', $data);
     }
-
-    // AJAX: Groupes TD par section
-    public function get_groupes_td() {
-        $section_id = $this->input->get('section_id');
-        $groupes_td = $this->EDT_model->get_groupes_td_by_section($section_id);
-        echo json_encode($groupes_td);
+    
+    // AJAX: Enfants d'une ressource (générique)
+    public function get_enfants($ressource_id) {
+        $enfants = $this->EDT_model->get_enfants_ressource($ressource_id);
+        $data['enfants'] = $enfants;
+        $data['select_name'] = $this->input->get('select_name');
+        $this->load->view('edt/partials/select_enfants', $data);
     }
-
-    // AJAX: Groupes TP par groupe TD
-    public function get_groupes_tp() {
-        $groupe_td_id = $this->input->get('groupe_td_id');
-        $groupes_tp = $this->EDT_model->get_groupes_tp_by_td($groupe_td_id);
-        echo json_encode($groupes_tp);
-    }
-
-    // AJAX: EDT complet du groupe TP
-    public function get_edt_groupe() {
-        $groupe_tp_id = $this->input->get('groupe_tp_id');
-        $edt = $this->EDT_model->get_edt_complet_groupe_tp($groupe_tp_id);
-        echo json_encode($edt);
-    }
-
+    
     // AJAX: Créneaux disponibles
-    public function get_creneaux_disponibles() {
-        $groupe_tp_id = $this->input->get('groupe_tp_id');
-        $creneaux = $this->EDT_model->get_creneaux_disponibles($groupe_tp_id);
-        echo json_encode($creneaux);
+
+    public function get_creneaux_disponibles($groupe_tp_id) {
+        $creneaux = $this->EDT_model->get_creneaux_tp_disponibles($groupe_tp_id);
+        $data['creneaux'] = $creneaux;
+        $this->load->view('edt/partials/creneaux_disponibles', $data);
     }
 
-    // AJAX: Ajouter un TP
-    public function planifier_tp() {
-        $groupe_tp_id = $this->input->post('groupe_tp_id');
-        $creneau_id = $this->input->post('creneau_id');
-        $matiere = $this->input->post('matiere');
-        $salle = $this->input->post('salle');
+    
+    // AJAX: Matières TP
+    public function get_matieres() {
+        $matieres = $this->EDT_model->get_matieres_tp();
+        $data['matieres'] = $matieres;
+        $this->load->view('edt/partials/select_matieres', $data);
+    }
+    
+    // AJAX: Salles TP (toutes)
+    public function get_salles() {
+        $salles = $this->EDT_model->get_salles_tp();
+        $data['salles'] = $salles;
+        $this->load->view('edt/partials/select_salles', $data);
+    }
 
-        if($this->EDT_model->ajouter_tp($groupe_tp_id, $creneau_id, $matiere, $salle)) {
-            $response = array(
-                'success' => true,
-                'message' => 'TP ajouté avec succès!'
-            );
-        } else {
-            $response = array(
-                'success' => false,
-                'message' => 'Erreur lors de l\'ajout du TP'
-            );
+    // AJAX: Salles par matière (NOUVELLE MÉTHODE)
+    public function get_salles_par_matiere($code_enseignement = null) {
+        // Récupérer le code_enseignement depuis l'URL si pas en paramètre
+        if (!$code_enseignement) {
+            $code_enseignement = $this->uri->segment(3);
         }
         
-        echo json_encode($response);
+        if (!$code_enseignement) {
+            echo "<option value=''>Erreur: code enseignement manquant</option>";
+            return;
+        }
+        
+        $salles = $this->EDT_model->get_salles_par_matiere($code_enseignement);
+        $data['salles'] = $salles;
+        $this->load->view('edt/partials/select_salles', $data);
+    }
+
+    
+    // Planifier un TP
+    public function planifier_tp() {
+        if ($this->input->post()) {
+            $success = $this->EDT_model->creer_seance_tp(array(
+                'groupe_tp_id' => $this->input->post('groupe_tp_id'),
+                'code_enseignement' => $this->input->post('code_enseignement'),
+                'salle_id' => $this->input->post('salle_id'),
+                'date_seance' => $this->input->post('date_seance'),
+                'heure_debut' => $this->input->post('heure_debut')
+            ));
+            
+            if ($success) {
+                $this->session->set_flashdata('success', 'TP planifié avec succès!');
+            } else {
+                $this->session->set_flashdata('error', 'Erreur lors de la planification');
+            }
+            
+            redirect('edt');
+        }
     }
     
+
+public function debug_structure_tables() {
+    echo "<h1>Debug Structure des Tables</h1>";
     
-
-public function planification_avancee() {
-    $data['sections'] = $this->Section_model->get_all_sections();
-    $this->load->view('edt/planification_avancee', $data);
-}
-
-public function get_matieres() {
-    $matieres = $this->EDT_model->get_matieres();
-    echo json_encode($matieres);
-}
-
-public function get_salles_by_matiere($matiere_id) {
-    $salles = $this->EDT_model->get_salles_by_matiere($matiere_id);
-    echo json_encode($salles);
-}
-
-public function planifier_tp_avance() {
-    $data = $this->input->post();
+    // Vérifier la table matieres
+    echo "<h2>Structure de la table 'matieres':</h2>";
+    $champs_matieres = $this->db->list_fields('matieres');
+    foreach ($champs_matieres as $champ) {
+        echo "Champ: $champ<br>";
+    }
     
-    if($this->EDT_model->planifier_tp_avance($data)) {
-        $response = array(
-            'success' => true,
-            'message' => 'TP planifié avec succès!'
-        );
+    // Vérifier la table ressources_salles
+    echo "<h2>Structure de la table 'ressources_salles':</h2>";
+    $champs_salles = $this->db->list_fields('ressources_salles');
+    foreach ($champs_salles as $champ) {
+        echo "Champ: $champ<br>";
+    }
+    
+    // Vérifier les données existantes
+    echo "<h2>Matières existantes:</h2>";
+    $matieres = $this->db->get('matieres')->result();
+    foreach ($matieres as $matiere) {
+        $departement = isset($matiere->departement) ? $matiere->departement : 'NON DÉFINI';
+        echo "Matière: $matiere->nom - Département: $departement<br>";
+    }
+    
+    echo "<h2>Salles existantes:</h2>";
+    $salles = $this->db->get('ressources_salles')->result();
+    foreach ($salles as $salle) {
+        echo "Salle: $salle->nom - Département: $salle->departement - Type: $salle->typeSalle<br>";
+    }
+}
+
+
+
+public function test_filtrage_salles() {
+    echo "<h1>Test Filtrage Salles par Département</h1>";
+    
+    // Test avec différentes matières
+    $matieres_test = $this->db->select('e.codeEnseignement, m.nom, m.departement')
+                              ->from('enseignements e')
+                              ->join('matieres m', 'm.codeMatiere = e.codeMatiere')
+                              ->limit(5)
+                              ->get()->result();
+    
+    foreach ($matieres_test as $matiere) {
+        echo "<h2>Matière: {$matiere->nom} (Département: {$matiere->departement})</h2>";
+        
+        $salles = $this->get_salles_par_matiere($matiere->codeEnseignement);
+        
+        if (empty($salles)) {
+            echo "❌ Aucune salle TP trouvée pour le département {$matiere->departement}<br>";
+        } else {
+            foreach ($salles as $salle) {
+                echo "✅ Salle: {$salle->nom} (Département: {$salle->departement})<br>";
+            }
+        }
+        echo "<hr>";
+    }
+}
+
+public function debug_matieres_tp() {
+    echo "<h1>Debug Matières TP</h1>";
+    
+    $this->load->model('EDT_model');
+    $matieres = $this->EDT_model->get_matieres_tp();
+    
+    echo "<h2>Méthode get_matieres_tp() - Résultats (" . count($matieres) . "):</h2>";
+    
+    if (empty($matieres)) {
+        echo "❌ Aucune matière trouvée<br>";
+        
+        // Debug de la requête
+        echo "<h3>Debug requête SQL:</h3>";
+        $this->db->select('m.codeMatiere, m.nom, e.codeEnseignement, e.codeTypeActivite');
+        $this->db->from('matieres m');
+        $this->db->join('enseignements e', 'e.codeMatiere = m.codeMatiere');
+        $this->db->where('e.codeTypeActivite', 3);
+        $this->db->group_by('m.codeMatiere');
+        
+        echo "SQL: " . $this->db->last_query() . "<br>";
+        
+        // Voir les données brutes
+        echo "<h3>Données brutes tables:</h3>";
+        
+        echo "<h4>Table matieres:</h4>";
+        $matieres_table = $this->db->get('matieres')->result();
+        foreach ($matieres_table as $m) {
+            echo "Matière: $m->codeMatiere - $m->nom<br>";
+        }
+        
+        echo "<h4>Table enseignements:</h4>";
+        $enseignements_table = $this->db->get('enseignements')->result();
+        foreach ($enseignements_table as $e) {
+            echo "Enseignement: $e->codeEnseignement - Matière: $e->codeMatiere - Type: $e->codeTypeActivite<br>";
+        }
+        
+        echo "<h4>Table types_activites:</h4>";
+        $types_table = $this->db->get('types_activites')->result();
+        foreach ($types_table as $t) {
+            echo "Type: $t->codeTypeActivite - $t->nom<br>";
+        }
+        
     } else {
-        $response = array(
-            'success' => false,
-            'message' => 'Erreur: Contraintes non respectées'
-        );
+        foreach ($matieres as $matiere) {
+            echo "✅ $matiere->codeMatiere - $matiere->nom (Enseignement: $matiere->codeEnseignement)<br>";
+        }
     }
+}
+
+public function debug_creneaux_disponibles($groupe_tp_id = 20) {
+    echo "<h1>Debug Créneaux Disponibles - VERSION CORRIGÉE</h1>";
+    echo "<h2>Groupe TP ID: $groupe_tp_id</h2>";
     
-    echo json_encode($response);
-}   
-
-    // AJAX: Récupérer les demi-journées TP disponibles
-    public function get_demi_journees_tp_disponibles() {
-        $groupe_tp_id = $this->input->get('groupe_tp_id');
-        $demi_journees = $this->EDT_model->get_demi_journees_tp_disponibles($groupe_tp_id);
-        echo json_encode($demi_journees);
-    }    
-
-
-public function debug_demi_journees_tp() {
     $this->load->model('EDT_model');
     
-    // Test avec un groupe TP spécifique
-    $groupe_tp_id = 1;
+    // 1. Hiérarchie
+    echo "<h3>1. Hiérarchie du groupe:</h3>";
+    $groupe_td = $this->EDT_model->get_groupe_td_parent($groupe_tp_id);
+    $section = $this->EDT_model->get_section_parente($groupe_td);
+    echo "Groupe TP: $groupe_tp_id<br>";
+    echo "Groupe TD parent: " . ($groupe_td ? $groupe_td : 'Non trouvé') . "<br>";
+    echo "Section parente: " . ($section ? $section : 'Non trouvée') . "<br>";
     
-    echo "<h1>DEBUG Demi-journées TP</h1>";
+    // 2. Séances existantes par niveau
+    echo "<h3>2. Séances existantes:</h3>";
     
-    // Test 1: Créneaux TP de base
-    echo "<h2>1. Toutes les demi-journées TP possibles:</h2>";
-    $this->db->where('type_cours_id', 3);
-    $this->db->where('sous_periode', 'Demi-journée');
-    $this->db->where("(jour != 'Samedi' OR periode != 'Après-midi')");
-    $creneaux_base = $this->db->get('creneaux')->result_array();
+    // Séances du groupe TP
+    echo "<h4>Séances du groupe TP ($groupe_tp_id):</h4>";
+    $seances_tp = $this->get_seances_par_ressource($groupe_tp_id);
+    $this->afficher_seances($seances_tp);
     
-    foreach ($creneaux_base as $creneau) {
-        echo "{$creneau['jour']} | {$creneau['periode']} | {$creneau['heure_debut']} - {$creneau['heure_fin']}<br>";
+    // Séances du groupe TD
+    if ($groupe_td) {
+        echo "<h4>Séances du groupe TD ($groupe_td):</h4>";
+        $seances_td = $this->get_seances_par_ressource($groupe_td);
+        $this->afficher_seances($seances_td);
     }
     
-    // Test 2: Demi-journées occupées
-    echo "<h2>2. Demi-journées occupées pour le groupe TP {$groupe_tp_id}:</h2>";
-    $occupees = $this->EDT_model->get_demi_journees_occupees_groupe_tp($groupe_tp_id);
-    foreach ($occupees as $occupee) {
-        echo "{$occupee['jour']} | {$occupee['periode']}<br>";
+    // Séances de la section
+    if ($section) {
+        echo "<h4>Séances de la section ($section):</h4>";
+        $seances_section = $this->get_seances_par_ressource($section);
+        $this->afficher_seances($seances_section);
     }
     
-    // Test 3: Demi-journées disponibles
-    echo "<h2>3. Demi-journées disponibles:</h2>";
-    $disponibles = $this->EDT_model->get_demi_journees_tp_disponibles($groupe_tp_id);
-    foreach ($disponibles as $dispo) {
-        echo "{$dispo['jour']} | {$dispo['periode']} | {$dispo['heure_debut']} - {$dispo['heure_fin']}<br>";
+    // 3. Créneaux occupés
+    echo "<h3>3. Créneaux occupés (convertis):</h3>";
+    $occupes = $this->EDT_model->get_creneaux_occupes_groupe_tp($groupe_tp_id);
+    
+    if (empty($occupes)) {
+        echo "✅ Aucun créneau occupé<br>";
+    } else {
+        foreach ($occupes as $occupe) {
+            echo "❌ Occupé: {$occupe['jour']} - {$occupe['periode']} (Date: {$occupe['dateSeance']})<br>";
+        }
     }
-}  
+    
+    // 4. Créneaux disponibles
+    echo "<h3>4. Créneaux disponibles après filtrage:</h3>";
+    $disponibles = $this->EDT_model->get_creneaux_tp_disponibles($groupe_tp_id);
+    
+    if (empty($disponibles)) {
+        echo "❌ Aucun créneau disponible<br>";
+    } else {
+        foreach ($disponibles as $dispo) {
+            echo "✅ Disponible: {$dispo['jour']} - {$dispo['periode']} ({$dispo['heure_debut']} - {$dispo['heure_fin']})<br>";
+        }
+    }
+}
 
-  
+// Méthodes helper pour le debug
+private function get_seances_par_ressource($ressource_id) {
+    $this->db->select('s.*');
+    $this->db->from('seances s');
+    $this->db->join('seances_groupes sg', 's.codeSeance = sg.codeSeance');
+    $this->db->where('sg.codeRessource', $ressource_id);
+    return $this->db->get()->result_array();
+}
+
+private function afficher_seances($seances) {
+    if (empty($seances)) {
+        echo "Aucune séance<br>";
+    } else {
+        foreach ($seances as $seance) {
+            $heure = sprintf('%04d', $seance['heureSeance']);
+            $heure_formatee = substr($heure, 0, 2) . ':' . substr($heure, 2, 2);
+            echo "- {$seance['dateSeance']} {$heure_formatee} (Durée: {$seance['dureeSeance']}min)<br>";
+        }
+    }
+}
+    
 }
 ?>
